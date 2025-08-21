@@ -29,6 +29,8 @@ const smsRoutes = require("./routes/smsRoutes");
 const smsNotificationService = require("./services/smsNotificationService");
 
 app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Connect to MongoDB
 connectDB();

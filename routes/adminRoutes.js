@@ -263,8 +263,7 @@ router.get("/", authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "Ruxsat yo'q" });
     }
 
-    const admins = await Admin.find({ isActive: true })
-      .select("-password");
+    const admins = await Admin.find({ isActive: true }).select("-password");
     res.json(admins);
   } catch (error) {
     res.status(500).json({ message: handleMongoError(error) });

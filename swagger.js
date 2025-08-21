@@ -16,7 +16,7 @@ const options = {
         description: "Local server",
       },
       {
-        url: "https://umaoil.up.railway.app",
+        url: "https://aka-uka.up.railway.app",
         description: "Production server",
       },
     ],
