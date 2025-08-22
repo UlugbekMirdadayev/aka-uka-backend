@@ -18,40 +18,10 @@ const productValidation = [
     .isNumeric({ min: 0 })
     .withMessage("Minimal quantity must be a non-negative number"),
   body("unit").notEmpty().withMessage("Unit is required"),
-  body("currency")
-    .isIn(["UZS", "USD"])
-    .withMessage("Currency must be UZS or USD"),
-  body("createdBy").isMongoId().withMessage("Invalid creator ID"),
-  body("branch").isMongoId().withMessage("Invalid branch ID"),
-  body("discount")
-    .optional()
-    .custom((value) => {
-      if (typeof value === "string") value = JSON.parse(value);
-      if (typeof value !== "object")
-        throw new Error("Discount must be an object");
-      if (value.price !== undefined && typeof value.price !== "number")
-        throw new Error("Discount price must be a number");
-      if (value.children && !Array.isArray(value.children))
-        throw new Error("Discount children must be an array");
-      if (value.children) {
-        value.children.forEach((child) => {
-          if (
-            typeof child.quantity !== "number" ||
-            typeof child.value !== "number"
-          ) {
-            throw new Error(
-              "Discount children must have numeric quantity and value"
-            );
-          }
-        });
-      }
-      return true;
-    }),
   body("description")
     .optional()
     .isString()
     .withMessage("Description must be a string"),
-
   body("isAvailable")
     .optional()
     .isBoolean()
@@ -70,14 +40,9 @@ router.post(
     }
 
     try {
-      if (typeof req.body.discount === "string") {
-        req.body.discount = JSON.parse(req.body.discount);
-      }
-
       const product = new Product({ ...req.body });
       await product.save();
-      const populatedProduct = await Product.findById(product._id)
-        .populate("createdBy", "-password");
+      const populatedProduct = await Product.findById(product._id);
 
       res.status(201).json(populatedProduct);
     } catch (error) {
@@ -95,7 +60,6 @@ router.get("/", async (req, res) => {
   try {
     const {
       name,
-      createdBy,
       minCostPrice,
       maxCostPrice,
       minSalePrice,
@@ -106,7 +70,6 @@ router.get("/", async (req, res) => {
       limit = 10,
       sortBy = "createdAt",
       sortOrder = "desc",
-      branch,
     } = req.query;
 
     // Преобразуем параметры пагинации в числа
@@ -134,7 +97,6 @@ router.get("/", async (req, res) => {
 
     const query = { isDeleted: false };
     if (name) query.name = { $regex: name, $options: "i" };
-    if (createdBy) query.createdBy = createdBy;
     if (minCostPrice || maxCostPrice) {
       query.costPrice = {};
       if (minCostPrice) query.costPrice.$gte = Number(minCostPrice);
@@ -149,14 +111,12 @@ router.get("/", async (req, res) => {
       query.isAvailable = isAvailable === "true";
     }
     if (search) query.name = { $regex: search, $options: "i" };
-    // branch query removed
 
     // Получаем общее количество документов для пагинации
     const totalCount = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalCount / limitNumber);
 
     const products = await Product.find(query)
-      .populate("createdBy", "-password")
       .sort({ [sortField]: sortDirection })
       .skip(skip)
       .limit(limitNumber);
@@ -190,8 +150,7 @@ router.get("/:id", async (req, res) => {
     const product = await Product.findOne({
       _id: req.params.id,
       isDeleted: false,
-    })
-      .populate("createdBy", "-password");
+    });
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     res.json(product);
@@ -219,16 +178,11 @@ router.patch(
       if (!product)
         return res.status(404).json({ message: "Product not found" });
 
-      if (typeof req.body.discount === "string") {
-        req.body.discount = JSON.parse(req.body.discount);
-      }
-
       // Обновляем данные продукта
       Object.assign(product, req.body);
       await product.save();
 
-      const populatedProduct = await Product.findById(product._id)
-        .populate("createdBy", "-password");
+      const populatedProduct = await Product.findById(product._id);
 
       res.json(populatedProduct);
     } catch (error) {
@@ -270,7 +224,6 @@ router.get("/search/:query", async (req, res) => {
       limit = 10,
       sortBy = "createdAt",
       sortOrder = "desc",
-      branch,
     } = req.query;
 
     // Преобразуем параметры пагинации в числа
@@ -298,16 +251,12 @@ router.get("/search/:query", async (req, res) => {
     if (isAvailable !== undefined) {
       searchQuery.isAvailable = isAvailable === "true";
     }
-    if (branch !== undefined) {
-      // branch query removed
-    }
 
     // Получаем общее количество документов для пагинации
     const totalCount = await Product.countDocuments(searchQuery);
     const totalPages = Math.ceil(totalCount / limitNumber);
 
     const products = await Product.find(searchQuery)
-      .populate("createdBy", "-password")
       .sort({ [sortField]: sortDirection })
       .skip(skip)
       .limit(limitNumber);
@@ -353,9 +302,6 @@ module.exports = router;
  *         - quantity
  *         - minQuantity
  *         - unit
- *         - currency
- *         - createdBy
- *         - branch
  *       properties:
  *         _id:
  *           type: string
@@ -377,43 +323,9 @@ module.exports = router;
  *           type: number
  *           minimum: 0
  *           description: Minimum quantity threshold
-
  *         unit:
  *           type: string
  *           description: Unit of measurement
- *         currency:
- *           type: string
- *           enum: [UZS, USD]
- *           description: Currency type
- *         createdBy:
- *           type: string
- *           description: ID of the admin who created the product
- *         branch:
- *           type: string
- *           description: ID of the branch
- *         vipPrice:
- *           type: number
- *           description: VIP price for special customers
- *         discount:
- *           type: object
- *           properties:
- *             price:
- *               type: number
- *               default: 0
- *               description: Fixed discount price
- *             children:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   quantity:
- *                     type: number
- *                     description: Quantity threshold for discount
- *                   value:
- *                     type: number
- *                     description: Discount percentage or value
- *               description: Array of quantity-based discounts
- *           description: Discount configuration for the product
  *         description:
  *           type: string
  *           description: Product description
@@ -440,9 +352,6 @@ module.exports = router;
  *         - quantity
  *         - minQuantity
  *         - unit
- *         - currency
- *         - createdBy
- *         - branch
  *       properties:
  *         name:
  *           type: string
@@ -466,51 +375,10 @@ module.exports = router;
  *           minimum: 0
  *           example: 10.5
  *           description: Minimum quantity threshold
-
  *         unit:
  *           type: string
  *           example: "литр"
  *           description: Unit of measurement
- *         currency:
- *           type: string
- *           enum: [UZS, USD]
- *           example: "UZS"
- *           description: Currency type
- *         createdBy:
- *           type: string
- *           example: "507f1f77bcf86cd799439011"
- *           description: ID of the admin who created the product
- *         branch:
- *           type: string
- *           example: "507f1f77bcf86cd799439012"
- *           description: ID of the branch
-
- *         vipPrice:
- *           type: number
- *           example: 70000
- *           description: VIP price for special customers
- *         discount:
- *           type: object
- *           properties:
- *             price:
- *               type: number
- *               example: 5000
- *               description: Fixed discount price
- *             children:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   quantity:
- *                     type: number
- *                     example: 5
- *                     description: Quantity threshold for discount
- *                   value:
- *                     type: number
- *                     example: 10
- *                     description: Discount percentage or value
- *               description: Array of quantity-based discounts
- *           description: Discount configuration for the product
  *         description:
  *           type: string
  *           example: "High quality motor oil for modern engines"
@@ -577,9 +445,6 @@ module.exports = router;
  *         - quantity
  *         - minQuantity
  *         - unit
- *         - currency
- *         - createdBy
- *         - branch
  *       properties:
  *         name:
  *           type: string
@@ -598,26 +463,9 @@ module.exports = router;
  *           type: number
  *           minimum: 0
  *           description: Minimum quantity threshold
-
  *         unit:
  *           type: string
  *           description: Unit of measurement
- *         currency:
- *           type: string
- *           enum: [UZS, USD]
- *           description: Currency type
- *         createdBy:
- *           type: string
- *           description: ID of the admin who created the product
- *         branch:
- *           type: string
- *           description: ID of the branch
- *         vipPrice:
- *           type: number
- *           description: VIP price for special customers
- *         discount:
- *           type: string
- *           description: JSON string of discount configuration
  *         description:
  *           type: string
  *           description: Product description
@@ -655,18 +503,9 @@ module.exports = router;
  *             salePrice: 75000
  *             quantity: 100.5
  *             minQuantity: 10.5
-
  *             unit: "литр"
- *             currency: "UZS"
- *             createdBy: "507f1f77bcf86cd799439011"
  *             description: "High quality motor oil"
- *             discount:
- *               price: 5000
- *               children:
- *                 - quantity: 5
- *                   value: 10
- *                 - quantity: 10
- *                   value: 15
+ *             isAvailable: true
  *     responses:
  *       201:
  *         description: Product created successfully
@@ -704,12 +543,6 @@ module.exports = router;
  *         schema:
  *           type: string
  *         description: Filter by product name (case insensitive)
- *       - in: query
- *         name: createdBy
- *         schema:
- *           type: string
- *         description: Filter by creator ID
-
  *       - in: query
  *         name: minCostPrice
  *         schema:
@@ -870,20 +703,12 @@ module.exports = router;
  *             name: "Updated Motor Oil 5W-30"
  *             costPrice: 55000
  *             salePrice: 80000
-
+ *             quantity: 90
+ *             unit: "литр"
+ *             description: "Updated description"
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 example: "Updated Motor Oil 5W-30"
- *               costPrice:
- *                 type: number
- *                 example: 55000
- *               salePrice:
- *                 type: number
- *                 example: 80000
+ *             $ref: '#/components/schemas/ProductInput'
 
  *     responses:
  *       200:
