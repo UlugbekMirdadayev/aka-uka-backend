@@ -4,35 +4,83 @@ const Product = require("../models/products/product.model");
 const authMiddleware = require("../middleware/authMiddleware");
 const { body, validationResult } = require("express-validator");
 
-
-
-/** Product validation rules */
-const productValidation = [
-  body("name").trim().notEmpty().withMessage("Product name is required"),
-  body("costPrice").isNumeric().withMessage("Cost price must be a number"),
-  body("salePrice").isNumeric().withMessage("Sale price must be a number"),
+/** Product validation rules for form-data (more flexible) */
+const productFormValidation = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Product name is required")
+    .not()
+    .equals("string")
+    .withMessage("Product name cannot be 'string'"),
+  body("costPrice")
+    .custom((value) => {
+      const num = Number(value);
+      if (isNaN(num)) throw new Error("Cost price must be a number");
+      if (num < 0) throw new Error("Cost price cannot be negative");
+      return true;
+    }),
+  body("salePrice")
+    .custom((value) => {
+      const num = Number(value);
+      if (isNaN(num)) throw new Error("Sale price must be a number");
+      if (num < 0) throw new Error("Sale price cannot be negative");
+      return true;
+    }),
   body("quantity")
-    .isNumeric({ min: 0 })
-    .withMessage("Quantity must be a non-negative number"),
+    .custom((value) => {
+      const num = Number(value);
+      if (isNaN(num)) throw new Error("Quantity must be a number");
+      if (num < 0) throw new Error("Quantity cannot be negative");
+      return true;
+    }),
   body("minQuantity")
-    .isNumeric({ min: 0 })
-    .withMessage("Minimal quantity must be a non-negative number"),
-  body("unit").notEmpty().withMessage("Unit is required"),
+    .custom((value) => {
+      const num = Number(value);
+      if (isNaN(num)) throw new Error("Minimal quantity must be a number");
+      if (num < 0) throw new Error("Minimal quantity cannot be negative");
+      return true;
+    }),
+  body("unit")
+    .trim()
+    .notEmpty()
+    .withMessage("Unit is required")
+    .not()
+    .equals("string")
+    .withMessage("Unit cannot be 'string'"),
   body("description")
     .optional()
-    .isString()
-    .withMessage("Description must be a string"),
+    .trim()
+    .custom((value) => {
+      if (value === "string") return "";
+      return value || "";
+    }),
   body("isAvailable")
     .optional()
-    .isBoolean()
-    .withMessage("isAvailable must be a boolean"),
+    .isIn(["true", "false", true, false])
+    .withMessage("isAvailable must be a boolean or boolean string"),
+  // Игнорируем старые поля, которые могут приходить с фронтенда
+  body("currency").optional(),
+  body("createdBy").optional(), 
+  body("branch").optional(),
+  body("vipPrice").optional(),
+  body("discount").optional(),
 ];
 
 /** Create product */
 router.post(
   "/",
   authMiddleware,
-  productValidation,
+  (req, res, next) => {
+    console.log("=== Product Creation Request ===");
+    console.log("Content-Type:", req.headers["content-type"]);
+    console.log("Body:", req.body);
+    console.log("Body Keys:", Object.keys(req.body));
+    console.log("Raw Body Available:", !!req.rawBody);
+    console.log("================================");
+    next();
+  },
+  productFormValidation,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -40,7 +88,21 @@ router.post(
     }
 
     try {
-      const product = new Product({ ...req.body });
+      // Фильтруем и преобразуем данные из req.body
+      const allowedFields = {
+        name: req.body.name?.trim(),
+        costPrice: Number(req.body.costPrice),
+        salePrice: Number(req.body.salePrice),
+        quantity: Number(req.body.quantity),
+        minQuantity: Number(req.body.minQuantity),
+        unit: req.body.unit?.trim(),
+        description: req.body.description === "string" ? "" : (req.body.description || ""),
+        isAvailable: req.body.isAvailable === 'false' ? false : (req.body.isAvailable !== 'false' && req.body.isAvailable !== false),
+      };
+
+      console.log("Processed fields:", allowedFields);
+
+      const product = new Product(allowedFields);
       await product.save();
       const populatedProduct = await Product.findById(product._id);
 
@@ -163,7 +225,11 @@ router.get("/:id", async (req, res) => {
 router.patch(
   "/:id",
   authMiddleware,
-  productValidation,
+  (req, res, next) => {
+    console.log("Received product update data:", req.body);
+    next();
+  },
+  productFormValidation,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -178,8 +244,29 @@ router.patch(
       if (!product)
         return res.status(404).json({ message: "Product not found" });
 
+      // Фильтруем только разрешенные поля для обновления
+      const allowedFields = {};
+      if (req.body.name !== undefined) allowedFields.name = req.body.name;
+      if (req.body.costPrice !== undefined)
+        allowedFields.costPrice = req.body.costPrice;
+      if (req.body.salePrice !== undefined)
+        allowedFields.salePrice = req.body.salePrice;
+      if (req.body.quantity !== undefined)
+        allowedFields.quantity = req.body.quantity;
+      if (req.body.minQuantity !== undefined)
+        allowedFields.minQuantity = req.body.minQuantity;
+      if (req.body.unit !== undefined) allowedFields.unit = req.body.unit;
+      if (req.body.description !== undefined)
+        allowedFields.description = req.body.description;
+      if (req.body.isAvailable !== undefined) {
+        allowedFields.isAvailable =
+          req.body.isAvailable === "false"
+            ? false
+            : Boolean(req.body.isAvailable);
+      }
+
       // Обновляем данные продукта
-      Object.assign(product, req.body);
+      Object.assign(product, allowedFields);
       await product.save();
 
       const populatedProduct = await Product.findById(product._id);
@@ -211,8 +298,6 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
-
 
 /** Quick search products by name */
 router.get("/search/:query", async (req, res) => {
@@ -284,8 +369,6 @@ router.get("/search/:query", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
-
 
 module.exports = router;
 
@@ -408,27 +491,9 @@ module.exports = router;
  *           type: number
  *           minimum: 0
  *           description: Minimum quantity threshold
-
  *         unit:
  *           type: string
  *           description: Unit of measurement
- *         currency:
- *           type: string
- *           enum: [UZS, USD]
- *           description: Currency type
- *         createdBy:
- *           type: string
- *           description: ID of the admin who created the product
- *         branch:
- *           type: string
- *           description: ID of the branch
-
- *         vipPrice:
- *           type: number
- *           description: VIP price for special customers
- *         discount:
- *           type: string
- *           description: JSON string of discount configuration
  *         description:
  *           type: string
  *           description: Product description
@@ -861,7 +926,3 @@ module.exports = router;
  *       500:
  *         description: Internal server error
  */
-
-
-
-

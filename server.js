@@ -11,12 +11,12 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*", // В продакшене укажите конкретные домены
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
-  }
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  },
 });
 
 // Make io accessible to routes
-app.set('io', io);
+app.set("io", io);
 const { swaggerUi, swaggerSpec } = require("./swagger");
 const adminRoutes = require("./routes/adminRoutes");
 const clientRoutes = require("./routes/clientRoutes");
@@ -28,9 +28,9 @@ const debtorRoutes = require("./routes/debtorRoutes");
 const smsRoutes = require("./routes/smsRoutes");
 const smsNotificationService = require("./services/smsNotificationService");
 
+// Middleware
+app.use(express.json({ limit: "25mb" })); // Увеличиваем лимит для больших файлов
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // Connect to MongoDB
 connectDB();
@@ -46,16 +46,16 @@ app.use("/api/debtors", debtorRoutes);
 app.use("/api/sms", smsRoutes);
 
 // Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log('Клиент подключился:', socket.id);
-  
-  socket.on('join_room', (room) => {
+io.on("connection", (socket) => {
+  console.log("Клиент подключился:", socket.id);
+
+  socket.on("join_room", (room) => {
     socket.join(room);
     console.log(`Клиент ${socket.id} присоединился к комнате: ${room}`);
   });
-  
-  socket.on('disconnect', () => {
-    console.log('Клиент отключился:', socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Клиент отключился:", socket.id);
   });
 });
 
@@ -100,6 +100,9 @@ server.listen(PORT, () => {
     smsNotificationService.startScheduledTasks();
     console.log("SMS notification service avtomatik ishga tushirildi");
   } catch (error) {
-    console.error("SMS notification service ishga tushirishda xatolik:", error.message);
+    console.error(
+      "SMS notification service ishga tushirishda xatolik:",
+      error.message
+    );
   }
 });
