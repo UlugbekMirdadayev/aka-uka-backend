@@ -60,8 +60,6 @@ const loginValidation = [
  *                 type: string
  *               fullName:
  *                 type: string
- *               branch:
- *                 type: string
  *               role:
  *                 type: string
  *     responses:
@@ -87,7 +85,7 @@ router.post("/register", authMiddleware, adminValidation, async (req, res) => {
       });
     }
 
-    const { phone, password, fullName, branch, role } = req.body;
+    const { phone, password, fullName, role } = req.body;
 
     const existingAdmin = await Admin.findOne({ phone });
     if (existingAdmin) {
@@ -101,7 +99,6 @@ router.post("/register", authMiddleware, adminValidation, async (req, res) => {
       phone,
       password,
       fullName,
-      branch,
       role: ["admin", "superadmin", "manager"].includes(role) ? role : "admin",
       isActive: true,
     });

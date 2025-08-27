@@ -63,9 +63,6 @@ const jwt = require("jsonwebtoken");
  *               birthday:
  *                 type: string
  *                 format: date
- *               branch:
- *                 type: string
-
  *               notes:
  *                 type: string
  *               cars:
@@ -93,12 +90,6 @@ const jwt = require("jsonwebtoken");
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: branch
- *         schema:
- *           type: string
- *         description: ID филиала
-
  *       - in: query
  *         name: search
  *         schema:
@@ -313,8 +304,7 @@ router.get("/", async (req, res) => {
     }
 
     const clients = await Client.find(query)
-      .populate("cars.model")
-      .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 });
     res.json(clients);
   } catch (error) {
     res.status(500).json({ message: "Serverda xatolik" });
@@ -324,9 +314,7 @@ router.get("/", async (req, res) => {
 // Получение клиента по ID
 router.get("/:id", async (req, res) => {
   try {
-    const client = await Client.findById(req.params.id).populate(
-      "cars.model"
-    );
+    const client = await Client.findById(req.params.id);
     if (!client) {
       return res.status(404).json({ message: "Mijoz topilmadi" });
     }

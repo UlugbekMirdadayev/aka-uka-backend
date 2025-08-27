@@ -127,7 +127,7 @@ router.post("/", authMiddleware, debtorValidation, async (req, res) => {
       currentDebt,
       initialDebt,
       initialDebtDate: new Date(),
-      totalPaid: { usd: 0, uzs: 0 },
+      totalPaid: 0,
       nextPayment: nextPayment || {},
       description: description || "",
     });
@@ -157,17 +157,7 @@ router.post("/", authMiddleware, debtorValidation, async (req, res) => {
     // Mijozning umumiy qarzini yangilash
     const clientDoc = await Client.findById(client);
     if (clientDoc) {
-      // Agar debt raqam bo'lsa, objektga aylantirish
-      if (typeof clientDoc.debt === "number") {
-        clientDoc.debt = { usd: 0, uzs: clientDoc.debt || 0 };
-      }
-      // Agar debt null yoki undefined bo'lsa, yangi objekt yaratish
-      if (!clientDoc.debt || typeof clientDoc.debt !== "object") {
-        clientDoc.debt = { usd: 0, uzs: 0 };
-      }
-
-      clientDoc.debt.usd = (clientDoc.debt.usd || 0) + (currentDebt.usd || 0);
-      clientDoc.debt.uzs = (clientDoc.debt.uzs || 0) + (currentDebt.uzs || 0);
+      clientDoc.debt = (clientDoc.debt || 0) + (currentDebt || 0);
       await clientDoc.save();
     }
 
@@ -607,22 +597,12 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     // Mijozning umumiy qarzidan айириш
     const clientDoc = await Client.findById(debtor.client);
     if (clientDoc) {
-      // Agar debt raqam bo'lsa, objektga aylantirish
-      if (typeof clientDoc.debt === "number") {
-        clientDoc.debt = { usd: 0, uzs: clientDoc.debt || 0 };
-      }
-      // Agar debt null yoki undefined bo'lsa, yangi objekt yaratish
-      if (!clientDoc.debt || typeof clientDoc.debt !== "object") {
-        clientDoc.debt = { usd: 0, uzs: 0 };
-      }
-
-      clientDoc.debt.usd = (clientDoc.debt.usd || 0) - debtor.currentDebt.usd;
-      clientDoc.debt.uzs = (clientDoc.debt.uzs || 0) - debtor.currentDebt.uzs;
+      clientDoc.debt = (clientDoc.debt || 0) - (debtor.currentDebt || 0);
       await clientDoc.save();
 
       // --- debtni 0 ga o'rnatish ---
       await Client.findByIdAndUpdate(debtor.client, {
-        $set: { "debt.usd": 0, "debt.uzs": 0 }
+        $set: { debt: 0 }
       });
       // --- end ---
     }
@@ -711,8 +691,8 @@ router.get("/stats/summary", async (req, res) => {
 
     const debtors = await Debtor.find(match);
 
-    let totalCurrentDebt = { usd: 0, uzs: 0 };
-    let totalPaid = { usd: 0, uzs: 0 };
+    let totalCurrentDebt = 0;
+    let totalPaid = 0;
     let statusCounts = {
       pending: 0,
       partial: 0,
@@ -721,10 +701,8 @@ router.get("/stats/summary", async (req, res) => {
     };
 
     for (const debtor of debtors) {
-      totalCurrentDebt.usd += debtor.currentDebt.usd || 0;
-      totalCurrentDebt.uzs += debtor.currentDebt.uzs || 0;
-      totalPaid.usd += debtor.totalPaid.usd || 0;
-      totalPaid.uzs += debtor.totalPaid.uzs || 0;
+      totalCurrentDebt += debtor.currentDebt || 0;
+      totalPaid += debtor.totalPaid || 0;
       statusCounts[debtor.status]++;
     }
 
@@ -773,9 +751,6 @@ router.get("/stats/summary", async (req, res) => {
  *                 type: number
 
  *           default: false
- *         branch:
- *           type: string
- *           description: Filial ID
  *         debt:
  *           type: object
  *           description: Mijoz qarzi

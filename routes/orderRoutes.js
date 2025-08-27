@@ -28,41 +28,23 @@ const orderValidation = [
     .isNumeric()
     .withMessage("Количество должно быть числом"),
   body("products.*.price").isNumeric().withMessage("Цена должна быть числом"),
-  body("totalAmount").custom((value) => {
-    if (!value || typeof value !== "object")
-      throw new Error("totalAmount должен быть объектом {usd, uzs}");
-    if (typeof value.usd !== "number" || typeof value.uzs !== "number")
-      throw new Error("totalAmount.usd и totalAmount.uzs должны быть числами");
-    return true;
-  }),
-  body("paidAmount").custom((value) => {
-    if (!value || typeof value !== "object")
-      throw new Error("paidAmount должен быть объектом {usd, uzs}");
-    if (typeof value.usd !== "number" || typeof value.uzs !== "number")
-      throw new Error("paidAmount.usd и paidAmount.uzs должны быть числами");
-    return true;
-  }),
-  body("debtAmount").custom((value) => {
-    if (!value || typeof value !== "object")
-      throw new Error("debtAmount должен быть объектом {usd, uzs}");
-    if (typeof value.usd !== "number" || typeof value.uzs !== "number")
-      throw new Error("debtAmount.usd и debtAmount.uzs должны быть числами");
-    return true;
-  }),
+  body("totalAmount")
+    .isNumeric()
+    .withMessage("totalAmount должен быть числом"),
+  body("paidAmount")
+    .isNumeric()
+    .withMessage("paidAmount должен быть числом"),
+  body("debtAmount")
+    .isNumeric()
+    .withMessage("debtAmount должен быть числом"),
   body("profitAmount")
     .optional()
-    .custom((value) => {
-      if (value && typeof value !== "object")
-        throw new Error("profitAmount должен быть объектом {usd, uzs}");
-      if (
-        value &&
-        (typeof value.usd !== "number" || typeof value.uzs !== "number")
-      )
-        throw new Error(
-          "profitAmount.usd и profitAmount.uzs должны быть числами"
-        );
-      return true;
-    }),
+    .isNumeric()
+    .withMessage("profitAmount должен быть числом"),
+  body("profitAmount")
+    .optional()
+    .isNumeric()
+    .withMessage("profitAmount должен быть числом"),
   body("paymentType")
     .isIn(["cash", "card", "debt"])
     .withMessage("Неверный метод оплаты"),
@@ -96,8 +78,6 @@ const orderValidation = [
  *             type: object
  *             properties:
  *               client:
- *                 type: string
- *               branch:
  *                 type: string
  *               products:
  *                 type: array
@@ -145,11 +125,6 @@ const orderValidation = [
  *         schema:
  *           type: string
  *         description: ID клиента
- *       - in: query
- *         name: branch
- *         schema:
- *           type: string
- *         description: ID филиала
  *       - in: query
  *         name: startDate
  *         schema:
@@ -299,11 +274,6 @@ const orderValidation = [
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: branch
- *         schema:
- *           type: string
- *         description: ID филиала
- *       - in: query
  *         name: startDate
  *         schema:
  *           type: string
@@ -328,12 +298,11 @@ router.post("/", orderValidation, async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     const {
       totalAmount,
-      paidAmount = { usd: 0, uzs: 0 },
-      debtAmount = { usd: 0, uzs: 0 },
+      paidAmount = 0,
+      debtAmount = 0,
       paymentType,
       date_returned,
       client: clientId,
-      branch,
       products,
       status = "pending",
       km = 0,
@@ -341,7 +310,7 @@ router.post("/", orderValidation, async (req, res) => {
     const client = await clientModel.findById(clientId);
 
     // Har bir mahsulot uchun foyda hisobini qo'shamiz
-    let profitAmount = { usd: 0, uzs: 0 };
+    let profitAmount = 0;
     for (let orderProduct of products) {
       const product = await Product.findById(orderProduct.product);
       if (!product) {
@@ -355,26 +324,9 @@ router.post("/", orderValidation, async (req, res) => {
       orderProduct.profit =
         (orderProduct.price - product.costPrice) * orderProduct.quantity;
 
-      // Umumiy foyda hisobini qo'shamiz (mahsulot valyutasiga qarab)
-      if (product.currency === "USD") {
-        profitAmount.usd += orderProduct.profit;
-      } else {
-        profitAmount.uzs += orderProduct.profit;
-      }
+      // Umumiy foyda hisobini qo'shamiz
+      profitAmount += orderProduct.profit;
     }
-
-    // Находим машину в массиве cars клиента
-    let carObject = null;
-    if (client && client.cars && req.body.car) {
-      const foundCar = client.cars.find(
-        (car) => car._id.toString() === req.body.car.toString()
-      );
-      if (foundCar) {
-        carObject = foundCar.toObject ? foundCar.toObject() : foundCar;
-      }
-    }
-
-    // Вычисляем индекс заказа для сегодняшнего дня (до создания order)
     const currentDate = new Date();
     const startOfDay = new Date(currentDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -384,8 +336,6 @@ router.post("/", orderValidation, async (req, res) => {
       createdAt: { $gte: startOfDay, $lte: currentDate },
     };
     if (clientId) dailyQuery.client = clientId;
-    if (branch) dailyQuery.branch = branch;
-
     const index = await Order.countDocuments(dailyQuery);
 
     // Product quantityni faqat "completed" statusda kamaytirish
@@ -405,7 +355,6 @@ router.post("/", orderValidation, async (req, res) => {
     // Создаем заказ с правильным carObject
     const order = new Order({
       client: clientId,
-      branch,
       products,
       totalAmount,
       paidAmount,
@@ -421,9 +370,8 @@ router.post("/", orderValidation, async (req, res) => {
 
     await order.save();
 
-    // Populate branch and products.product after saving
+    // Populate products.product after saving
     await order.populate([
-      { path: "branch" },
       { path: "products.product" },
       { path: "client" },
     ]);
@@ -438,7 +386,6 @@ router.post("/", orderValidation, async (req, res) => {
         relatedModel: "Order",
         relatedId: order._id,
         client: clientId || null,
-        branch: branch,
         createdBy: req.user?.id || null,
       });
     } catch (transactionError) {
@@ -457,20 +404,15 @@ router.post("/", orderValidation, async (req, res) => {
     try {
       let msg = `🆕 Yangi buyurtma!\n`;
       msg += `Mijoz: ${client?.fullName || "Noma'lum"}\n`;
-      msg += `Filial: ${isBranch.name}\n`;
       msg += `Status: ${statusName[status]}\n`;
-      msg += `Umumiy summa: ${totalAmount.usd} USD, ${totalAmount.uzs} UZS\n`;
-      msg += `Foyda: ${profitAmount.usd?.toLocaleString(2) || 0} USD, ${
-        profitAmount.uzs?.toLocaleString(2) || 0
-      } UZS\n`;
+      msg += `Umumiy summa: ${totalAmount.toLocaleString()} UZS\n`;
+      msg += `Foyda: ${profitAmount?.toLocaleString() || 0} UZS\n`;
       msg += `Mahsulotlar:\n`;
       for (const p of products) {
         const prod = await Product.findById(p.product);
         msg += `- ${prod?.name || p.product} x ${p.quantity} ${prod.unit} (${
-          p.price
-        } ${prod.currency}) - Foyda: ${p.profit?.toLocaleString(2) || 0} ${
-          prod.currency
-        }\n`;
+          p.price.toLocaleString()
+        } UZS) - Foyda: ${p.profit?.toLocaleString() || 0} UZS\n`;
       }
       await bot.sendMessage(TELEGRAM_CHAT_ID, msg);
     } catch (err) {
@@ -478,7 +420,7 @@ router.post("/", orderValidation, async (req, res) => {
     }
 
     // Qarzdorlikni faqat "completed" statusda mijozga qo'shish
-    const debtTotal = (debtAmount.usd || 0) + (debtAmount.uzs || 0);
+    const debtTotal = debtAmount || 0;
     if (paymentType === "debt" && debtTotal > 0) {
       if (!date_returned) {
         return res.status(400).json({
@@ -491,24 +433,13 @@ router.post("/", orderValidation, async (req, res) => {
       if (clientId) {
         let existingDebtor = await Debtor.findOne({
           client: clientId,
-          branch,
           status: { $ne: "paid" },
         });
 
         if (existingDebtor) {
-          existingDebtor.totalDebt = {
-            usd: (existingDebtor.totalDebt?.usd || 0) + (debtAmount.usd || 0),
-            uzs: (existingDebtor.totalDebt?.uzs || 0) + (debtAmount.uzs || 0),
-          };
-          existingDebtor.remainingDebt = {
-            usd:
-              (existingDebtor.remainingDebt?.usd || 0) + (debtAmount.usd || 0),
-            uzs:
-              (existingDebtor.remainingDebt?.uzs || 0) + (debtAmount.uzs || 0),
-          };
-          existingDebtor.description += `\n[+${debtAmount.usd || 0} USD, +${
-            debtAmount.uzs || 0
-          } UZS] Yangi buyurtma`;
+          existingDebtor.totalDebt = (existingDebtor.totalDebt || 0) + debtAmount;
+          existingDebtor.remainingDebt = (existingDebtor.remainingDebt || 0) + debtAmount;
+          existingDebtor.description += `\n[+${debtAmount} UZS] Yangi buyurtma`;
           if (
             new Date(date_returned) > new Date(existingDebtor.date_returned)
           ) {
@@ -518,10 +449,9 @@ router.post("/", orderValidation, async (req, res) => {
         } else {
           const newDebtor = new Debtor({
             client: clientId,
-            branch,
             order: order._id,
             totalDebt: debtAmount,
-            paidAmount: { usd: 0, uzs: 0 },
+            paidAmount: 0,
             remainingDebt: debtAmount,
             description: req.body.notes || "",
             date_returned,
@@ -534,8 +464,7 @@ router.post("/", orderValidation, async (req, res) => {
         if (status === "completed") {
           await Client.findByIdAndUpdate(clientId, {
             $inc: {
-              "debt.usd": debtAmount.usd || 0,
-              "debt.uzs": debtAmount.uzs || 0,
+              debt: debtAmount || 0,
             },
           });
         }
@@ -566,7 +495,6 @@ router.get("/", async (req, res) => {
   try {
     const {
       client,
-      branch,
       startDate,
       endDate,
       date_returned,
@@ -576,7 +504,6 @@ router.get("/", async (req, res) => {
     } = req.query;
     let query = { isDeleted: false };
     if (client) query.client = client;
-    if (branch) query.branch = branch;
     if (date_returned) query.date_returned = date_returned;
     if (startDate || endDate) {
       query.createdAt = {};
@@ -616,7 +543,6 @@ router.get("/", async (req, res) => {
           createdAt: { $gte: startOfDay, $lte: order.createdAt },
         };
         if (client) dailyQuery.client = client;
-        if (branch) dailyQuery.branch = branch;
         if (date_returned) dailyQuery.date_returned = date_returned;
 
         const index = await Order.countDocuments(dailyQuery);
@@ -734,7 +660,7 @@ router.patch("/:id", orderValidation, async (req, res) => {
     } = req.body;
 
     // Agar products o'zgartirilayotgan bo'lsa, foyda hisobini qayta hisoblaymiz
-    let profitAmount = { usd: 0, uzs: 0 };
+    let profitAmount = 0;
     if (products) {
       for (let orderProduct of products) {
         const product = await Product.findById(orderProduct.product);
@@ -749,16 +675,12 @@ router.patch("/:id", orderValidation, async (req, res) => {
         orderProduct.profit =
           (orderProduct.price - product.costPrice) * orderProduct.quantity;
 
-        // Umumiy foyda hisobini qo'shamiz (mahsulot valyutasiga qarab)
-        if (product.currency === "USD") {
-          profitAmount.usd += orderProduct.profit;
-        } else {
-          profitAmount.uzs += orderProduct.profit;
-        }
+        // Umumiy foyda hisobini qo'shamiz
+        profitAmount += orderProduct.profit;
       }
     } else {
       // Agar products o'zgartirilmayotgan bo'lsa, mavjud profitAmount ni saqlaymiz
-      profitAmount = order.profitAmount || { usd: 0, uzs: 0 };
+      profitAmount = order.profitAmount || 0;
     }
     // if (paidAmount + debtAmount !== totalAmount) {
     //   return res
@@ -851,7 +773,6 @@ router.patch("/:id", orderValidation, async (req, res) => {
 
         const newDebtor = new Debtor({
           client: order.client,
-          branch: order.branch,
           order: order._id,
           totalDebt: newDebt,
           paidAmount: 0,
@@ -981,7 +902,6 @@ router.patch(
           createdAt: { $gte: startOfDay, $lte: order.createdAt },
         };
         if (order.client) dailyQuery.client = order.client;
-        if (order.branch) dailyQuery.branch = order.branch;
 
         const index = await Order.countDocuments(dailyQuery);
 
@@ -1022,9 +942,8 @@ router.patch(
 // GET /orders/stats/summary
 router.get("/stats/summary", async (req, res) => {
   try {
-    const { branch, startDate, endDate } = req.query;
+    const { startDate, endDate } = req.query;
     let match = { status: "completed", isDeleted: false }; // Faqat completed va o'chirilmagan
-    if (branch) match.branch = branch;
     if (startDate || endDate) {
       match.createdAt = {};
       if (startDate) match.createdAt.$gte = new Date(startDate);
@@ -1039,23 +958,18 @@ router.get("/stats/summary", async (req, res) => {
     // Faqat completed orderlar
     const orders = await Order.find(match).populate("products.product");
 
-    let totalAmount = { usd: 0, uzs: 0 };
-    let totalPaid = { usd: 0, uzs: 0 };
-    let totalDebt = { usd: 0, uzs: 0 };
-    let totalProfit = { usd: 0, uzs: 0 };
-    let totalSales = { usd: 0, uzs: 0 };
+    let totalAmount = 0;
+    let totalPaid = 0;
+    let totalDebt = 0;
+    let totalProfit = 0;
+    let totalSales = 0;
 
     for (const order of orders) {
-      totalAmount.usd += order.totalAmount?.usd || 0;
-      totalAmount.uzs += order.totalAmount?.uzs || 0;
-      totalPaid.usd += order.paidAmount?.usd || 0;
-      totalPaid.uzs += order.paidAmount?.uzs || 0;
-      totalDebt.usd += order.debtAmount?.usd || 0;
-      totalDebt.uzs += order.debtAmount?.uzs || 0;
-      totalProfit.usd += order.profitAmount?.usd || 0;
-      totalProfit.uzs += order.profitAmount?.uzs || 0;
-      totalSales.usd += order.paidAmount?.usd || 0;
-      totalSales.uzs += order.paidAmount?.uzs || 0;
+      totalAmount += order.totalAmount || 0;
+      totalPaid += order.paidAmount || 0;
+      totalDebt += order.debtAmount || 0;
+      totalProfit += order.profitAmount || 0;
+      totalSales += order.paidAmount || 0;
     }
 
     // Bugungi savdo (completed orderlar)
@@ -1064,13 +978,11 @@ router.get("/stats/summary", async (req, res) => {
       createdAt: { $gte: today, $lt: tomorrow },
     });
 
-    let todaySales = { usd: 0, uzs: 0 };
-    let todayProfit = { usd: 0, uzs: 0 };
+    let todaySales = 0;
+    let todayProfit = 0;
     for (const order of todayOrders) {
-      todaySales.usd += order.paidAmount?.usd || 0;
-      todaySales.uzs += order.paidAmount?.uzs || 0;
-      todayProfit.usd += order.profitAmount?.usd || 0;
-      todayProfit.uzs += order.profitAmount?.uzs || 0;
+      todaySales += order.paidAmount || 0;
+      todayProfit += order.profitAmount || 0;
     }
 
     // Unikal mahsulotlar soni (faqat completed)
@@ -1116,10 +1028,7 @@ router.delete("/:id", async (req, res) => {
       if (order.paymentType === "debt" && order.debtAmount) {
         const clientDoc = await Client.findById(order.client);
         if (clientDoc) {
-          clientDoc.debt = {
-            usd: (clientDoc.debt?.usd || 0) - (order.debtAmount?.usd || 0),
-            uzs: (clientDoc.debt?.uzs || 0) - (order.debtAmount?.uzs || 0),
-          };
+          clientDoc.debt = (clientDoc.debt || 0) - (order.debtAmount || 0);
           await clientDoc.save();
         }
       }

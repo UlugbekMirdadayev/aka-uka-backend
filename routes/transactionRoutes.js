@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
 // ➕ Kirim
 router.post("/cash-in", async (req, res) => {
   try {
-    let { amount, paymentType, description, branch, createdBy, client } =
+    let { amount, paymentType, description, createdBy, client } =
       req.body;
     // amount should be a number
     amount = Number(amount) || 0;
@@ -38,7 +38,6 @@ router.post("/cash-in", async (req, res) => {
       amount,
       paymentType,
       description,
-      branch,
       createdBy,
       client,
     });
@@ -51,7 +50,7 @@ router.post("/cash-in", async (req, res) => {
 // ➖ Chiqim
 router.post("/cash-out", async (req, res) => {
   try {
-    let { amount, paymentType, description, branch, createdBy, client } =
+    let { amount, paymentType, description, createdBy, client } =
       req.body;
     amount = Number(amount) || 0;
     if (amount < 0) {
@@ -69,7 +68,6 @@ router.post("/cash-out", async (req, res) => {
       amount,
       paymentType,
       description,
-      branch,
       createdBy,
       client,
     });
@@ -82,7 +80,7 @@ router.post("/cash-out", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const transactionId = req.params.id;
-    let { amount, paymentType, description, branch, createdBy, client } =
+    let { amount, paymentType, description, createdBy, client } =
       req.body;
     amount = Number(amount) || 0;
     if (amount < 0) {
@@ -304,11 +302,6 @@ router.get("/statistics/monthly-transactions", async (req, res) => {
  *         schema:
  *           type: integer
  *         description: Год
- *       - in: query
- *         name: branch
- *         schema:
- *           type: string
- *         description: ID филиала
  *     responses:
  *       200:
  *         description: Месячная статистика

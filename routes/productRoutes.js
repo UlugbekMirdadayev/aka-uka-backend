@@ -13,73 +13,42 @@ const productFormValidation = [
     .not()
     .equals("string")
     .withMessage("Product name cannot be 'string'"),
-  body("costPrice")
-    .custom((value) => {
-      const num = Number(value);
-      if (isNaN(num)) throw new Error("Cost price must be a number");
-      if (num < 0) throw new Error("Cost price cannot be negative");
-      return true;
-    }),
-  body("salePrice")
-    .custom((value) => {
-      const num = Number(value);
-      if (isNaN(num)) throw new Error("Sale price must be a number");
-      if (num < 0) throw new Error("Sale price cannot be negative");
-      return true;
-    }),
-  body("quantity")
-    .custom((value) => {
-      const num = Number(value);
-      if (isNaN(num)) throw new Error("Quantity must be a number");
-      if (num < 0) throw new Error("Quantity cannot be negative");
-      return true;
-    }),
-  body("minQuantity")
-    .custom((value) => {
-      const num = Number(value);
-      if (isNaN(num)) throw new Error("Minimal quantity must be a number");
-      if (num < 0) throw new Error("Minimal quantity cannot be negative");
-      return true;
-    }),
-  body("unit")
-    .trim()
-    .notEmpty()
-    .withMessage("Unit is required")
-    .not()
-    .equals("string")
-    .withMessage("Unit cannot be 'string'"),
-  body("description")
-    .optional()
-    .trim()
-    .custom((value) => {
-      if (value === "string") return "";
-      return value || "";
-    }),
+  body("costPrice").custom((value) => {
+    const num = Number(value);
+    if (isNaN(num)) throw new Error("Cost price must be a number");
+    if (num < 0) throw new Error("Cost price cannot be negative");
+    return true;
+  }),
+  body("salePrice").custom((value) => {
+    const num = Number(value);
+    if (isNaN(num)) throw new Error("Sale price must be a number");
+    if (num < 0) throw new Error("Sale price cannot be negative");
+    return true;
+  }),
+  body("quantity").custom((value) => {
+    const num = Number(value);
+    if (isNaN(num)) throw new Error("Quantity must be a number");
+    if (num < 0) throw new Error("Quantity cannot be negative");
+    return true;
+  }),
+  body("minQuantity").custom((value) => {
+    const num = Number(value);
+    if (isNaN(num)) throw new Error("Minimal quantity must be a number");
+    if (num < 0) throw new Error("Minimal quantity cannot be negative");
+    return true;
+  }),
   body("isAvailable")
     .optional()
     .isIn(["true", "false", true, false])
     .withMessage("isAvailable must be a boolean or boolean string"),
   // Игнорируем старые поля, которые могут приходить с фронтенда
-  body("currency").optional(),
-  body("createdBy").optional(), 
-  body("branch").optional(),
-  body("vipPrice").optional(),
-  body("discount").optional(),
 ];
 
 /** Create product */
 router.post(
   "/",
   authMiddleware,
-  (req, res, next) => {
-    console.log("=== Product Creation Request ===");
-    console.log("Content-Type:", req.headers["content-type"]);
-    console.log("Body:", req.body);
-    console.log("Body Keys:", Object.keys(req.body));
-    console.log("Raw Body Available:", !!req.rawBody);
-    console.log("================================");
-    next();
-  },
+  (req, res, next) => next(),
   productFormValidation,
   async (req, res) => {
     const errors = validationResult(req);
@@ -96,8 +65,13 @@ router.post(
         quantity: Number(req.body.quantity),
         minQuantity: Number(req.body.minQuantity),
         unit: req.body.unit?.trim(),
-        description: req.body.description === "string" ? "" : (req.body.description || ""),
-        isAvailable: req.body.isAvailable === 'false' ? false : (req.body.isAvailable !== 'false' && req.body.isAvailable !== false),
+        description:
+          req.body.description === "string" ? "" : req.body.description || "",
+        isAvailable:
+          req.body.isAvailable === "false"
+            ? false
+            : req.body.isAvailable !== "false" &&
+              req.body.isAvailable !== false,
       };
 
       console.log("Processed fields:", allowedFields);
